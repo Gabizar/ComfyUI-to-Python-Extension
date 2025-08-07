@@ -250,9 +250,11 @@ class CodeGenerator:
                 special_functions_code.append(class_code)
 
             # Get all possible parameters for class_def
+            func = getattr(class_def, class_def.FUNCTION)
             class_def_params = self.get_function_parameters(
-                getattr(class_def, class_def.FUNCTION)
+                func
             )
+            is_async = inspect.iscoroutinefunction(func)
             no_params = class_def_params is None
 
             # Remove any keyword arguments from **inputs if they are not in class_def_params
@@ -292,6 +294,7 @@ class CodeGenerator:
                     is_special_function,
                     cache_key,
                     node_id=idx,
+                    is_async=is_async,
                     **inputs,
                 )
             else:
@@ -302,6 +305,7 @@ class CodeGenerator:
                     executed_variables[idx],
                     is_special_function,
                     node_id=idx,
+                    is_async=is_async,
                     **inputs,
                 )
 
@@ -324,6 +328,7 @@ class CodeGenerator:
         variable_name: str,
         is_special_function: bool,
         node_id: str = None,
+        is_async: bool = False,
         **kwargs,
     ) -> str:
         """Generate Python code for a function call.
@@ -342,7 +347,7 @@ class CodeGenerator:
         args = ", ".join(self.format_arg(key, value, node_id) for key, value in kwargs.items())
 
         # Generate the Python code
-        code = f"{variable_name} = {obj_name}.{func}({args})\n"
+        code = f"{variable_name} = {"await " if is_async else ""}{obj_name}.{func}({args})\n"
 
         # If the code contains dependencies and is not a loader or encoder, indent the code because it will be placed inside
         # of a for loop
@@ -359,6 +364,7 @@ class CodeGenerator:
         is_special_function: bool,
         cache_key: str,
         node_id: str = None,
+        is_async: bool = False,
         **kwargs,
     ) -> str:
         """Generate Python code for a cached function call.
@@ -379,7 +385,7 @@ class CodeGenerator:
 
         # Generate the cached Python code
         indent = "\t" if not is_special_function else ""
-        code = f'{indent}{variable_name} = _NODE_CACHE["{cache_key}"] if "{cache_key}" in _NODE_CACHE else _NODE_CACHE.setdefault("{cache_key}", {obj_name}.{func}({args}))\n'
+        code = f'{indent}{variable_name} = _NODE_CACHE["{cache_key}"] if "{cache_key}" in _NODE_CACHE else _NODE_CACHE.setdefault("{cache_key}", {"await " if is_async else ""}{obj_name}.{func}({args}))\n'
 
         return code
 
@@ -560,7 +566,7 @@ class CodeGenerator:
                 param_list.append(f"{param_name} = None")
             
             param_string = ', \n    '.join(param_list)
-            main_signature = f"def main(\n    {param_string}\n):"
+            main_signature = f"async def main(\n    {param_string}\n):"
         else:
             main_signature = "def main():"
         
