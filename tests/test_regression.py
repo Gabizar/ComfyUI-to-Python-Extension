@@ -396,6 +396,65 @@ class TestComfyUIToPythonRegression:
             # Restore original node mappings
             NODE_CLASS_MAPPINGS.clear()
             NODE_CLASS_MAPPINGS.update(original_mappings)
+    
+    def test_subgraph_workflow(self, comfyui_setup, temp_dir):
+        """
+        Test 6: Subgraph workflow support
+        
+        This test validates that workflows with subgraph nodes (hierarchical IDs) 
+        are properly parsed and converted to Python code.
+        """
+        # Import extension modules after ComfyUI setup
+        from comfyui_to_python import ComfyUItoPython, FileHandler
+        
+        # Load the test subgraph workflow
+        test_dir = os.path.dirname(__file__)
+        subgraph_api_file = os.path.join(test_dir, "subgraph_api.json")
+        subgraph_params_file = os.path.join(test_dir, "subgraph_params.json")
+        
+        # Verify test files exist
+        assert os.path.exists(subgraph_api_file), f"Subgraph API test file not found: {subgraph_api_file}"
+        assert os.path.exists(subgraph_params_file), f"Subgraph params test file not found: {subgraph_params_file}"
+        
+        # Convert subgraph workflow to Python
+        output_file = os.path.join(temp_dir, "test_subgraph_workflow.py")
+        
+        converter = ComfyUItoPython(
+            input_file=subgraph_api_file,
+            output_file=output_file,
+            queue_size=1,
+            needs_init_custom_nodes=False,
+            param_mappings_file=subgraph_params_file
+        )
+        
+        # Verify the Python file was created
+        assert os.path.exists(output_file), "Generated Python file should exist"
+        
+        # Read and validate the generated code
+        with open(output_file, 'r') as f:
+            generated_code = f.read()
+        
+        # Basic validation checks for subgraph support
+        assert "LoadImage" in generated_code, "Generated code should contain LoadImage"
+        assert "SaveImage" in generated_code, "Generated code should contain SaveImage"
+        assert "async def main" in generated_code, "Generated code should have async main function"
+        assert "torch.inference_mode" in generated_code, "Generated code should use inference mode"
+        
+        # Check that subgraph node IDs are properly cleaned for variable names
+        # Original IDs: "1:18:16", "1:18:17" should become valid Python variable names
+        assert "node_1_18_16" in generated_code or "loadimage_node_1_18_16" in generated_code, \
+            "Generated code should contain cleaned subgraph node ID variables"
+        
+        # Check parameter mapping support
+        assert "image=None" in generated_code, "Generated code should have parameterized image input"
+        
+        # Verify the code is syntactically valid Python
+        try:
+            compile(generated_code, output_file, 'exec')
+        except SyntaxError as e:
+            pytest.fail(f"Generated code has syntax errors: {e}")
+        
+        print(f"✅ Subgraph workflow test passed. Generated file: {output_file}")
 
 
 class TestComfyUIDiscovery:

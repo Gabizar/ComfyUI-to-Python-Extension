@@ -1,0 +1,24 @@
+{
+  "1:18:17": {
+    "inputs": {
+      "filename_prefix": "ComfyUI",
+      "images": [
+        "1:18:16",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Image"
+    }
+  },
+  "1:18:16": {
+    "inputs": {
+      "image": "example.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    }
+  }
+}
