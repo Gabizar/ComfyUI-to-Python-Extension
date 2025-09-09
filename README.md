@@ -3,6 +3,8 @@
 
 The `ComfyUI-to-Python-Extension` is a powerful tool that translates [ComfyUI](https://github.com/comfyanonymous/ComfyUI) workflows into executable Python code. Designed to bridge the gap between ComfyUI's visual interface and Python's programming environment, this script facilitates the seamless transition from design to code execution. Whether you're a data scientist, a software developer, or an AI enthusiast, this tool streamlines the process of implementing ComfyUI workflows in Python.
 
+**✨ New: Subgraph Support!** - Now supports complex workflows with subgraphs and hierarchical node structures.
+
 **Convert this:**
 
 ![SDXL UI Example](images/SDXL-UI-Example.jpg)
@@ -210,6 +212,33 @@ if __name__ == "__main__":
 7. After running `comfyui_to_python.py`, a new .py file will be created in the current working directory. If you made no changes, look for `workflow_api.py`.
 
 8. Now you can execute the newly created .py file to generate images without launching a server.
+
+### Subgraph Support
+
+The extension now supports ComfyUI workflows with subgraphs (nested workflows). Subgraph workflows use hierarchical node IDs like `"1:18:16"` instead of simple numeric IDs like `"1"`.
+
+**Key Features:**
+- ✅ Automatic detection of subgraph workflows
+- ✅ Proper handling of hierarchical node IDs
+- ✅ Parameter mapping support for subgraph nodes
+- ✅ Clean variable name generation for complex node IDs
+
+**Example subgraph node ID handling:**
+- Input: `"1:18:16"` → Variable: `loadimage_node_1_18_16`
+- Input: `"2:5:3"` → Variable: `saveimage_node_2_5_3`
+
+When using parameter mappings with subgraphs, ensure your parameter mapping file references the full hierarchical node IDs:
+
+```json
+{
+  "image_input": [
+    ["1:18:16", "image"]
+  ],
+  "output_prefix": [
+    ["1:18:17", "filename_prefix"]
+  ]
+}
+```
 
 ## Testing
 

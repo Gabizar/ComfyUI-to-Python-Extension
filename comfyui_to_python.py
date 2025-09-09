@@ -2,6 +2,7 @@ import copy
 import glob
 import inspect
 import json
+import keyword
 import os
 import random
 import sys
@@ -105,6 +106,8 @@ class LoadOrderDeterminer:
 
     This class places the nodes without node dependencies first, then ensures that any node whose
     result is used in another node will be added to the list in the order it should be executed.
+    
+    Supports both simple workflows and subgraph workflows with hierarchical node IDs.
 
     Attributes:
         data (Dict): The dictionary for which to determine the load order.
@@ -218,7 +221,7 @@ class CodeGenerator:
         """
         # Create the necessary data structures to hold imports and generated code
         import_statements, executed_variables, special_functions_code, code, return_executable_variables = (
-            set(["NODE_CLASS_MAPPINGS"]),
+            {"NODE_CLASS_MAPPINGS"},
             {},
             [],
             [],
@@ -306,10 +309,11 @@ class CodeGenerator:
             no_params = class_def_params is None
 
             # Remove any keyword arguments from **inputs if they are not in class_def_params
+            # Also remove keys that are not valid Python variable names e.g. "video - preview" for LoadVideo node
             inputs = {
                 key: value
                 for key, value in inputs.items()
-                if no_params or key in class_def_params
+                if (no_params or key in class_def_params) and key.isidentifier() and not keyword.iskeyword(key)
             }
             # Deal with hidden variables
             if (
@@ -322,7 +326,7 @@ class CodeGenerator:
                     inputs["unique_id"] = random.randint(1, 2**64)
 
             # Create executed variable and generate code
-            executed_variables[idx] = f"{self.clean_variable_name(class_type)}_{idx}"
+            executed_variables[idx] = f"{self.clean_variable_name(class_type)}_{self.clean_node_id(idx)}"
             
             # Check if this is an output node using the OUTPUT_NODE attribute
             # This is more robust than hardcoding node names as it works with custom nodes too
@@ -473,7 +477,7 @@ class CodeGenerator:
             return f'{key}={value["variable_name"]}'
         return f"{key}={value}"
 
-    def get_param_name_for_node_key(self, node_id: str, key: str) -> str:
+    def get_param_name_for_node_key(self, node_id: str, key: str) -> str | None:
         """Get parameter name for a given node ID and key.
         
         Args:
@@ -481,7 +485,7 @@ class CodeGenerator:
             key (str): Parameter key.
             
         Returns:
-            str: Parameter name if found, None otherwise.
+            str | None: Parameter name if found, None otherwise.
         """
         if not self.param_mappings or not node_id:
             return None
@@ -580,7 +584,9 @@ class CodeGenerator:
         import json
         sorted_inputs = json.dumps(inputs, sort_keys=True)
         # Use abs() to ensure hash is always positive for valid dictionary keys
-        return f"{class_type}_{abs(hash(sorted_inputs))}"
+        # Include cleaned node_id to ensure uniqueness across subgraphs
+        clean_id = self.clean_node_id(node_id)
+        return f"{class_type}_{clean_id}_{abs(hash(sorted_inputs))}"
 
     def assemble_python_code(
         self,
@@ -633,7 +639,7 @@ class CodeGenerator:
             custom_nodes = ""
         # Create import statements for node classes
         imports_code = [
-            f"from nodes import {', '.join([class_name for class_name in import_statements])}"
+            f"from nodes import {', '.join(import_statements)}"
         ]
         
         # Add global cache variable for node caching
@@ -712,6 +718,29 @@ class CodeGenerator:
 
         return clean_name
 
+    @staticmethod
+    def clean_node_id(node_id: str) -> str:
+        """
+        Clean node ID for use in variable names, handling subgraph IDs.
+        
+        Args:
+            node_id (str): Node ID (may contain colons for subgraphs).
+            
+        Returns:
+            str: Cleaned node ID safe for use in variable names.
+        """
+        # Replace colons with underscores for subgraph IDs
+        clean_id = node_id.replace(":", "_")
+        
+        # Remove any other problematic characters
+        clean_id = re.sub(r"\W", "_", clean_id)
+        
+        # Ensure it doesn't start with a number
+        if clean_id and clean_id[0].isdigit():
+            clean_id = "node_" + clean_id
+            
+        return clean_id
+
     def get_function_parameters(self, func: Callable) -> List:
         """Get the names of a function's parameters.
 
@@ -755,6 +784,9 @@ class CodeGenerator:
 
 class ComfyUItoPython:
     """Main workflow to generate Python code from a workflow_api.json file.
+    
+    Supports both simple workflows and subgraph workflows with hierarchical node IDs.
+    Subgraph node IDs use the format "subgraph_id:node_id" (e.g., "1:18:16").
 
     Attributes:
         input_file (str): Path to the input JSON file.
@@ -803,6 +835,18 @@ class ComfyUItoPython:
         self.base_node_class_mappings = copy.deepcopy(self.node_class_mappings)
         self.execute()
 
+    @staticmethod
+    def is_subgraph_workflow(data: Dict) -> bool:
+        """Check if the workflow contains subgraph nodes.
+        
+        Args:
+            data (Dict): The workflow data dictionary.
+            
+        Returns:
+            bool: True if the workflow contains subgraph nodes (node IDs with colons).
+        """
+        return any(":" in str(node_id) for node_id in data.keys())
+
     def execute(self):
         """Execute the main workflow to generate Python code.
 
@@ -821,6 +865,10 @@ class ComfyUItoPython:
             data = FileHandler.read_json_file(self.input_file)
         else:
             data = json.loads(self.workflow)
+            
+        # Check if this is a subgraph workflow
+        if self.is_subgraph_workflow(data):
+            print("Detected subgraph workflow with hierarchical node IDs")
 
         # Step 3: Read parameter mappings if provided
         param_mappings = {}
