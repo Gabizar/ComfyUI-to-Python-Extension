@@ -2,6 +2,7 @@ import copy
 import glob
 import inspect
 import json
+import keyword
 import os
 import random
 import sys
@@ -308,10 +309,11 @@ class CodeGenerator:
             no_params = class_def_params is None
 
             # Remove any keyword arguments from **inputs if they are not in class_def_params
+            # Also remove keys that are not valid Python variable names e.g. "video - preview" for LoadVideo node
             inputs = {
                 key: value
                 for key, value in inputs.items()
-                if no_params or key in class_def_params
+                if (no_params or key in class_def_params) and key.isidentifier() and not keyword.iskeyword(key)
             }
             # Deal with hidden variables
             if (
