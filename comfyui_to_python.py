@@ -315,15 +315,17 @@ class CodeGenerator:
                 for key, value in inputs.items()
                 if (no_params or key in class_def_params) and key.isidentifier() and not keyword.iskeyword(key)
             }
+
+            # Commented out because it's not a proper way to inject hidden variables, not sure if it's useful at all
             # Deal with hidden variables
-            if (
-                "hidden" in input_types.keys()
-                and "unique_id" in input_types["hidden"].keys()
-            ):
-                inputs["unique_id"] = random.randint(1, 2**64)
-            elif class_def_params is not None:
-                if "unique_id" in class_def_params:
-                    inputs["unique_id"] = random.randint(1, 2**64)
+            # if (
+            #     "hidden" in input_types.keys()
+            #     and "unique_id" in input_types["hidden"].keys()
+            # ):
+            #     inputs["unique_id"] = random.randint(1, 2**64)
+            # elif class_def_params is not None:
+            #     if "unique_id" in class_def_params:
+            #         inputs["unique_id"] = random.randint(1, 2**64)
 
             # Create executed variable and generate code
             executed_variables[idx] = f"{self.clean_variable_name(class_type)}_{self.clean_node_id(idx)}"
