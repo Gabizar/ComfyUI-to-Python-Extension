@@ -184,6 +184,16 @@ class LoadOrderDeterminer:
                     self._dfs(key)
 
 
+def create_node(node_name, unique_id=random.randint(1, 2**64), extra_data: Dict[str, Any] = {}):
+    from nodes import NODE_CLASS_MAPPINGS
+
+    node_class = NODE_CLASS_MAPPINGS[node_name]
+    if hasattr(node_class, "hidden"):
+        extra_data["unique_id"] = unique_id
+        cloned_class = node_class.PREPARE_CLASS_CLONE(extra_data)
+        return cloned_class()  # Instantiate the cloned class
+    return node_class()
+
 class CodeGenerator:
     """Generates Python code for a workflow based on the load order.
 
@@ -221,16 +231,12 @@ class CodeGenerator:
         """
         # Create the necessary data structures to hold imports and generated code
         import_statements, executed_variables, special_functions_code, code, return_executable_variables = (
-            {"NODE_CLASS_MAPPINGS"},
+            {},
             {},
             [],
             [],
             [],
         )
-
-        # Force req_id input even if not mapped to any node
-        if self.param_mappings.get("req_id") is None:
-            self.param_mappings["req_id"] = []
 
         print("Validate param_mappings refer to existing node ids and param keys...")
         for param_name, mappings in self.param_mappings.items():
@@ -248,21 +254,6 @@ class CodeGenerator:
                     print(f"Node with idx {map_idx} doesn't exist in workflow api!")
                     exit(1)
         print("Param mappings are valid!")
-
-        # Detect output nodes which save files to disk and assign req_id to their filename_prefix input
-        # using the self.param_mappings dictionary.
-        # Motivation is to prevent overwriting files while parallel processing
-        # (all comfy instances are running using the same --output-directory,
-        #  wanted to fix it but that breaks caching functionality)
-        for idx, data, is_special_function in load_order:
-            # Generate class definition and inputs from the data
-            inputs, class_type = data["inputs"], data["class_type"]
-            class_def = self.node_class_mappings[class_type]()
-            if self.is_output_node(class_def):
-                if "filename_prefix" in inputs:
-                    self.param_mappings["req_id"].append([idx, "filename_prefix"])
-                else:
-                    print(f"Output node {class_type} has no filename_prefix input, can't guarantee unique filenames!")
 
         # This dictionary will store the names of the objects that we have already initialized
         initialized_objects = {}
@@ -295,7 +286,10 @@ class CodeGenerator:
                 )
                 initialized_objects[class_type] = self.clean_variable_name(class_type)
                 if class_type in self.base_node_class_mappings.keys():
-                    import_statements.add(import_statement)
+                    if len(import_statements) > 0:
+                        import_statements.add(import_statement)
+                    else:
+                        import_statements = {import_statement}
                 if class_type not in self.base_node_class_mappings.keys():
                     custom_nodes = True
                 special_functions_code.append(class_code)
@@ -593,7 +587,7 @@ class CodeGenerator:
     def assemble_python_code(
         self,
         import_statements: set,
-        speical_functions_code: List[str],
+        special_functions_code: List[str],
         code: List[str],
         queue_size: int,
         custom_nodes=False,
@@ -618,6 +612,7 @@ class CodeGenerator:
             find_path,
             add_comfyui_directory_to_sys_path,
             add_extra_model_paths,
+            create_node,
         ]:
             func_strings.append(f"\n{inspect.getsource(func)}")
         # Define static import statements required for the script
@@ -641,7 +636,7 @@ class CodeGenerator:
             custom_nodes = ""
         # Create import statements for node classes
         imports_code = [
-            f"from nodes import {', '.join(import_statements)}"
+            f"from nodes import {', '.join(import_statements)}" if len(import_statements) > 0 else ""
         ]
         
         # Add global cache variable for node caching
@@ -656,14 +651,14 @@ class CodeGenerator:
             param_list.append(f"{param_name} = None")
         
         param_string = ', \n    '.join(param_list)
-        main_signature = f"async def main(\n    {param_string}\n):"
+        main_signature = f"async def main(\n    {param_string},\n**extra_data):"
         
         # Assemble the main function code, including custom nodes if applicable
         main_function_code = (
             main_signature + "\n\t"
             + f"{custom_nodes}with torch.inference_mode():\n\t\t"
-            + "\n\t\t".join(speical_functions_code)
-            + f"\n\n\t\tfor q in range({queue_size}):\n\t\t"
+            + "\n\t\t".join(special_functions_code)
+            + f"\n\n\t\tfor _ in range({queue_size}):\n\t\t"
             + "\n\t\t".join(code)
             + f"\n\t\treturn [{', '.join(return_executable_variables)}]"
         )
@@ -690,10 +685,8 @@ class CodeGenerator:
         """
         import_statement = class_type
         variable_name = self.clean_variable_name(class_type)
-        if class_type in self.base_node_class_mappings.keys():
-            class_code = f"{variable_name} = {class_type.strip()}()"
-        else:
-            class_code = f'{variable_name} = NODE_CLASS_MAPPINGS["{class_type}"]()'
+
+        class_code = f"{variable_name} = create_node('{class_type}', extra_data=extra_data)"
 
         return class_type, import_statement, class_code
 
