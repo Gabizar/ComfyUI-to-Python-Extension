@@ -622,7 +622,7 @@ class CodeGenerator:
                 "import random",
                 "import sys",
                 "import asyncio",
-                "from typing import Sequence, Mapping, Any, Union",
+                "from typing import Sequence, Mapping, Any, Union, Dict",
                 "import torch",
             ]
             + func_strings
