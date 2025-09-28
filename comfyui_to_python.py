@@ -310,16 +310,15 @@ class CodeGenerator:
                 if (no_params or key in class_def_params) and key.isidentifier() and not keyword.iskeyword(key)
             }
 
-            # Commented out because it's not a proper way to inject hidden variables, not sure if it's useful at all
-            # Deal with hidden variables
-            # if (
-            #     "hidden" in input_types.keys()
-            #     and "unique_id" in input_types["hidden"].keys()
-            # ):
-            #     inputs["unique_id"] = random.randint(1, 2**64)
-            # elif class_def_params is not None:
-            #     if "unique_id" in class_def_params:
-            #         inputs["unique_id"] = random.randint(1, 2**64)
+            # hidden variables, primarily unique_id,
+            # can be provided via extra_data during class instantiation
+            # or via the inputs (which appears to be an older, inconsistent way)
+            # Here we handle the unique_id in inputs (even if it's not listed as required)
+            # an example of such use is the ImpactSwitch node
+            node_class = self.node_class_mappings[class_type]
+
+            if not hasattr(node_class, "hidden") and "hidden" in input_types.keys() and "unique_id" in input_types["hidden"].keys():
+                inputs["unique_id"] = random.randint(1, 2**64)
 
             # Create executed variable and generate code
             executed_variables[idx] = f"{self.clean_variable_name(class_type)}_{self.clean_node_id(idx)}"
