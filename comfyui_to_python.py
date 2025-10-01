@@ -633,10 +633,6 @@ class CodeGenerator:
             custom_nodes = "await import_custom_nodes_async()\n\t"
         else:
             custom_nodes = ""
-        # Create import statements for node classes
-        imports_code = [
-            f"from nodes import {', '.join(import_statements)}" if len(import_statements) > 0 else ""
-        ]
         
         # Add global cache variable for node caching
         cache_code = [
@@ -664,7 +660,6 @@ class CodeGenerator:
         # Concatenate all parts to form the final code
         final_code = "\n".join(
             static_imports
-            + imports_code
             + cache_code
             + ["", main_function_code, "", 'if __name__ == "__main__":', "\tasyncio.run(main())"]
         )
